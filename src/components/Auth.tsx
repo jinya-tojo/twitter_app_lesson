@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import styles from "./Auth.module.css";
+import { updataUserProfile } from '../features/userSlice'; 
 import { useDispatch } from 'react-redux';
 import { auth, storage, provider } from "../firebase";
 import { 
@@ -10,7 +11,9 @@ import {
     TextField, 
     Typography, 
     makeStyles, 
-    Paper 
+    Paper, 
+    Box,
+    IconButton
 } from '@material-ui/core';
 
 import LockOutlinedIcon from '@material-ui/icons/LockOutlined';
@@ -53,8 +56,19 @@ const useStyles = makeStyles((theme) => ({
 
 export const Auth:React.FC = () => {
   const classes = useStyles();
+  const dispatch = useDispatch();
   const [email, setEmail] = useState("");
   const [password, setPassWord] = useState("");
+  const [username, setUsername] = useState("");
+  const [avatarImage, setAvatarImage] = useState<File | null>(null);
+
+  const onChangeImageHandler = (e:React.ChangeEvent<HTMLInputElement>) => {
+    if(e.target.files![0]) {
+      setAvatarImage(e.target.files![0]) ;
+      e.target.value = "";
+    }
+  }
+
   const [isLogin, setIsLogin] = useState(true);
 
   const signInEmail = async () => {
@@ -62,7 +76,30 @@ export const Auth:React.FC = () => {
   };
 
   const signUpEmail = async () => {
-    await auth.createUserWithEmailAndPassword(email, password);
+    const authUser = await auth.createUserWithEmailAndPassword(email, password);
+    let url = "";
+    if(avatarImage) {
+      const S = 
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      const N = 16;
+      const randomChar = Array.from(crypto.getRandomValues(new Uint32Array(N)))
+        .map((n) => S[n % S.length])
+        .join("");
+      const fileName = randomChar + "_" + avatarImage.name;
+
+      await storage.ref(`avatars/${fileName}`).put(avatarImage);
+      url = await storage.ref("avatars").child(fileName).getDownloadURL();
+    }
+    await authUser.user?.updateProfile({
+      displayName:username,
+      photoURL:url,
+    });
+    dispatch(
+      updataUserProfile({
+        displayName: username,
+        photoUrl:url,
+      })
+    )
    }; 
 
   const signInGoogle = async () => {
@@ -82,6 +119,44 @@ export const Auth:React.FC = () => {
             {isLogin ? "Login": "Register"}
           </Typography>
           <form className={classes.form} noValidate>
+          {!isLogin && (
+            <>
+              <TextField
+                variant="outlined"
+                margin="normal"
+                required
+                fullWidth
+                id="username"
+                label="Username"
+                name="username"
+                autoComplete="username"
+                autoFocus
+                value={username}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setUsername(e.target.value);
+                }}
+              />
+              <Box textAlign="center">
+                <IconButton>
+                  <label>
+                    <AccountCircleIcon
+                      fontSize='large'
+                      className={
+                        avatarImage 
+                          ?  styles.login_addIconLoaded
+                          :  styles.login_addIcon
+                      }
+                    />
+                    <input
+                      className={styles.login_hiddenIcon}
+                      type="file"
+                      onChange={onChangeImageHandler}
+                    />
+                  </label>
+                </IconButton>
+              </Box>
+            </>
+          )}
             <TextField
               variant="outlined"
               margin="normal"
@@ -114,6 +189,12 @@ export const Auth:React.FC = () => {
             
             />
             <Button
+              disabled={
+                isLogin
+                  ? !email || password.length < 6
+                  : !username || !email || password.length < 6 || !avatarImage
+              }
+
               fullWidth
               variant="contained"
               color="primary"
@@ -143,7 +224,7 @@ export const Auth:React.FC = () => {
                 <Grid item xs>
                     <span className={styles.login_reset}>Forgot Password?</span>
                 </Grid>
-                <Grid item xs>
+                <Grid item>
                     <span 
                         className={styles.login_toggleMode}
                         onClick={() => setIsLogin(!isLogin)}
